@@ -36,3 +36,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Generated plots (Drive運用、CLAUDE.md §8参照)
+plots/*.png
