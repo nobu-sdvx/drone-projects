@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONIOENCODING=utf-8 python mainwing_structural_analysis.py)",
+      "Bash(echo \"---exit: $?---\")"
+    ]
+  }
+}
