@@ -1,0 +1,11 @@
+
+POWERUP 4.0 micro motor (estimated, public spec only)
+! Specs: 40,000 rpm max at 1S LiPo (~3.7 V)
+! Public spec only -> Rmotor and Io are typical micro-coreless estimates.
+! For RPM-driven sweeps in QPROP these values do not influence T/Q (only Pelec).
+
+ 1        ! motor type (brushed DC)
+
+ 1.0      ! Rmotor (Ohms)         -- typical for 6-7 mm coreless micro
+ 0.05     ! Io     (Amps)         -- typical no-load current
+ 10800.0  ! Kv     (rpm/Volt)     -- 40,000 rpm / 3.7 V

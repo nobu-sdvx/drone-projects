@@ -1,0 +1,39 @@
+
+POWERUP 4.0 self-made propeller D=36mm P=27mm (Crazyflie 45mm scaled)
+
+ 2     0.018   ! Nblades   R [m]   (R = D/2 = 18 mm)
+
+! Blade airfoil: provisional NACA 4412-class values for low-Re (~20k)
+! TO BE REFINED with NeuralFoil polars (see propeller_design_spec_v0.3 §4.4)
+ 0.50   5.80   ! CL0       CL_a      (per rad)
+-0.40   1.10   ! CLmin     CLmax     (low-Re conservative stall)
+
+ 0.025  0.040  0.025  0.50   ! CD0   CD2u   CD2l   CLCD0
+ 50000  -0.50               ! REref REexp   (low-Re scaling)
+
+! Scaling for the radial table below:
+!   r column   = r/R (non-dim)  -> Rfac = 0.018 m
+!   chord col. = mm              -> Cfac = 0.001 m
+!   beta col.  = degrees         -> Bfac = 1.0   (QPROP converts deg->rad)
+ 0.018   0.001   1.0    ! Rfac    Cfac    Bfac
+ 0.0     0.0     0.0    ! Radd    Cadd    Badd
+
+#  r/R    chord[mm]   beta[deg]      (Crazyflie cfnq_45p1_geom scaled to D=36mm)
+ 0.15    4.41         29.2
+ 0.20    4.74         26.8
+ 0.25    5.05         24.6
+ 0.30    5.35         22.9
+ 0.35    5.69         21.5
+ 0.40    5.99         20.2
+ 0.45    6.29         19.0
+ 0.50    6.53         18.1
+ 0.55    6.70         17.5
+ 0.60    6.81         17.1
+ 0.65    6.86         16.8
+ 0.70    6.87         16.5
+ 0.75    6.82         16.1
+ 0.80    6.70         15.7
+ 0.85    6.31         15.6
+ 0.90    5.60         15.9
+ 0.95    4.10         15.5
+ 1.00    0.83         11.5
