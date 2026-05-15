@@ -1,0 +1,34 @@
+
+POWERUP 4.0 self-made propeller D=36mm P=27mm (FlatPlate blade section, NeuralFoil-refined)
+
+ 2     0.0180   ! Nblades   R [m]
+
+! Blade airfoil: FlatPlate, NeuralFoil xlarge polar fit @ Re=16000
+ 0.2224   6.6005   ! CL0       CL_a  (per rad)
+ -0.3399   1.0615   ! CLmin     CLmax
+
+ 0.02537  0.10103  0.00500  0.2859   ! CD0   CD2u   CD2l   CLCD0
+ 16000  -0.50               ! REref REexp
+
+ 0.018   0.001   1.0    ! Rfac    Cfac    Bfac
+ 0.0     0.0     0.0    ! Radd    Cadd    Badd
+
+#  r/R    chord[mm]   beta[deg]
+ 0.15    4.42         29.2
+ 0.20    4.74         26.8
+ 0.25    5.05         24.6
+ 0.30    5.35         22.9
+ 0.35    5.69         21.5
+ 0.40    6.00         20.2
+ 0.45    6.29         19.0
+ 0.50    6.53         18.1
+ 0.55    6.70         17.5
+ 0.60    6.81         17.1
+ 0.65    6.86         16.8
+ 0.70    6.87         16.5
+ 0.75    6.82         16.1
+ 0.80    6.69         15.7
+ 0.85    6.31         15.6
+ 0.90    5.59         15.9
+ 0.95    4.11         15.5
+ 1.00    0.84         11.5
