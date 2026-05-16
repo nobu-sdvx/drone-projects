@@ -26,6 +26,7 @@ import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AIRFOIL_DIR = os.path.join(HERE, "airfoils")
+PROPELLER_BLADE_POLAR_DIR = os.path.join(HERE, "xfoil_data", "propeller_blade")
 UIUC_DATA_DIR = os.path.join(HERE, "uiuc_propeller_data", "volume-2", "data")
 QPROP_DATA_DIR = os.path.join(HERE, "qprop_data")
 PLOTS_DIR = os.path.join(HERE, "plots")
@@ -83,8 +84,8 @@ P_OVER_D = P_PROPELLER / D_PROPELLER   # 0.75
 N_BLADES = 2
 R_PROPELLER = D_PROPELLER / 2.0        # 半径 [m] = 0.018
 
-# 動作点(設計書 v0.3 §3.5、推定値)
-RPM_CRUISE = 22100           # 巡航動作RPM(メーカープロペラ寸法から逆算) [rpm]
+# 動作点(巡航 RPM は QPROP 推力釣り合いで確定、最大動作 RPM は設計書 v0.3 §3.5 推定)
+RPM_CRUISE = 25122           # 巡航動作RPM(QPROP: V=7.5 で必要推力 26.5mN 到達、2026-05-16確定) [rpm]
 RPM_MAX_OP = 26600           # 最大動作RPM(V=9 m/s) [rpm]
 SLIP = 0.25                  # スリップ率(小径低速プロペラ典型値)
 
@@ -94,7 +95,7 @@ HUB_LENGTH = 0.008           # ハブ長 [m]
 HUB_OUTER_DIAMETER = 0.005   # ハブ外径 [m]
 
 # ブレード根本断面(設計書 v0.3 §5.2、強度設計から確定)
-C_ROOT = 0.005               # 根本弦長 [m]
+C_ROOT = 0.005               # 根本弦長 [m](根太め化値。ブレード形状の根本もこの値に一元化)
 T_ROOT = 0.0015              # 根本厚さ [m]
 R_HUB_TItrim = 0.003         # ハブ際の半径 [m](r/R≈0.15 付近、揚力寄与の内端)
 
@@ -103,6 +104,7 @@ R_HUB_TItrim = 0.003         # ハブ際の半径 [m](r/R≈0.15 付近、揚力
 # =============================================================================
 # (r/R, c/R, beta[deg]) — 出典: cfnq_45p1_geom.txt(UIUC Volume 2)
 # 自作 D=36mm への弦長換算: c[m] = (c/R) * R_PROPELLER
+# 根本 r/R=0.15 の弦長は強度設計の C_ROOT(根太め化 5.0mm)で上書きする(D5 対応)
 
 BLADE_GEOMETRY = [
     (0.15, 0.2453, 29.162),   # 根本
@@ -146,23 +148,26 @@ M_BLADE_TENTATIVE = 0.3e-3   # ブレード質量 [kg](0.3 g 仮値)
 # =============================================================================
 # 翼型候補(ブレード断面、設計書 v0.3 §4.4)
 # =============================================================================
-# 動作 Re ≈ 8,000-20,000 の極低Re域。NeuralFoil で比較し 1 つに確定する。
+# 動作 Re ≈ 8,000-20,000 の極低Re域。XFLR5 ポーラで比較し 1 つに確定する。
+# ポーラ実体: xfoil_data/propeller_blade/{接頭辞}_T1_Re{Re}_N*.txt
 
-AIRFOIL_CANDIDATES = {
-    "S1223":      "s1223.dat",      # 超低Re高揚力(候補1番手)
-    "E205":       "e205.dat",       # 層流良好、広い動作域(候補2番手)
-    "AG12":       "ag12.dat",       # Drela 低Re系(候補4番手)
-    # 「薄キャンバ平板」は .dat が無いので flat_plate_camber4() で生成(候補3番手)
+# 翼型名 -> XFLR5 ポーラファイルの接頭辞
+AIRFOIL_XFLR5_PREFIX = {
+    "S1223":          "s1223",          # 超低Re高揚力
+    "E205":           "e205",           # 層流良好、広い動作域
+    "AG12":           "ag12",           # Drela 低Re系
+    "camber4_thick2": "camber4_thick2", # 薄キャンバ翼型(キャンバ4%・厚さ2%)
 }
 
-# プロペラ動作 Re 域(NeuralFoil ポーラ取得点)
-RE_OPERATING = [8000, 12000, 16000, 20000]
+# プロペラ動作 Re 域(XFLR5 ポーラ取得点。実ファイルの Re グリッドに一致)
+RE_OPERATING = [8000, 10000, 12000, 15000, 20000]
+RE_REP = 15000   # 75%R 代表点(翼型スクリーニング・QPROP フィットの基準 Re)
 
 # 三点評価の RPM(設計書 v0.3 §5、40K 最悪 / 27K 最大動作 / 22K 巡航)
 RPM_EVALUATION = [
     ("40K最悪",      RPM_MAX),       # 公式仕様最大、強度評価の最悪ケース
     ("27K最大動作",  RPM_MAX_OP),    # V=9 m/s 時
-    ("22K巡航",      RPM_CRUISE),    # 巡航動作点
+    ("25K巡航",      RPM_CRUISE),    # 巡航動作点(QPROP 確定 25,122 rpm)
 ]
 
 

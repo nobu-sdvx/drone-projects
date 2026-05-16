@@ -10,7 +10,7 @@ propeller_structural_analysis.py
 
 役割:
   自作 ABS プロペラ(D=36mm、3D プリント)の支配荷重(遠心力)に対する
-  ブレード根応力・安全率を三点(40K/27K/22K rpm)で評価し、推定値の
+  ブレード根応力・安全率を三点(40K/27K/25K rpm)で評価し、推定値の
   ロバスト性を RPM×ブレード質量の感度解析で確認する。併せて軸-ハブ嵌合の
   保持力と翼端マッハ数を検証する。
 
@@ -92,6 +92,11 @@ def compute_blade_root_bending_stress(T_max: float, L_blade: float,
     推力 T_max を有効長 L_blade に等分布荷重と仮定:
       M_root = (T/L)·L²/2 = T·L/2
       Z = b·h²/6(矩形断面、b=c_root, h=t_root)
+
+    保守仮定(設計書 §5.3 と統一):T_max にはモーター 1 基の全推力を入れる。
+    実際は 2 枚のブレードが推力を分担する(1 枚あたり T_max/2)ため、本式は
+    曲げ応力を約 2 倍に見積もる安全側評価。σ_B は支配項ではない(σ_T の
+    1/10 程度)ので、この保守化が SF を大きく損なうことはない。
 
     Args:
         T_max: ブレード 1 枚あたり最大推力 [N]
@@ -236,11 +241,14 @@ def plot_sf_sensitivity_heatmap(rpm_range: np.ndarray, mass_range: np.ndarray,
     cs4 = ax.contour(rpm_range / 1000, mass_range * 1e3, sf_matrix,
                      levels=[4], colors="red", linewidths=2.5)
     ax.clabel(cs4, fmt="目標 SF=4", fontsize=9)
-    # 三点評価をマーク
+    # 三点評価をマーク(右端の点は注記が見切れないよう左側に出す)
     for name, rpm in cfg.RPM_EVALUATION:
         ax.plot(rpm / 1000, cfg.M_BLADE_TENTATIVE * 1e3, "k*", ms=14)
+        right_edge = rpm / 1000 > 0.85 * rpm_range[-1] / 1000
         ax.annotate(name, (rpm / 1000, cfg.M_BLADE_TENTATIVE * 1e3),
-                    textcoords="offset points", xytext=(6, 6), fontsize=8)
+                    textcoords="offset points",
+                    xytext=(-52, 8) if right_edge else (6, 6),
+                    fontsize=8)
     fig.colorbar(im, ax=ax, label="安全率 SF")
     ax.set(xlabel="RPM [×1000]", ylabel="ブレード質量 m_blade [g]",
            title="SF 感度ヒートマップ(RPM × ブレード質量)")
@@ -313,7 +321,7 @@ def main():
 
     # ---------- 三点評価 ----------
     print("\n" + "─" * 72)
-    print(" 三点評価(40K最悪 / 27K最大動作 / 22K巡航)")
+    print(" 三点評価(40K最悪 / 27K最大動作 / 25K巡航)")
     print("─" * 72)
     print(f"\n  {'動作点':<14}{'F_cf [N]':>10}{'σ_T [MPa]':>11}"
           f"{'σ_B [MPa]':>11}{'σ_total':>10}{'SF':>8}")
@@ -391,12 +399,13 @@ def main():
     print("\n" + "=" * 72)
     print(" 確定値サマリー(計算書 §5 提供物)")
     print("=" * 72)
-    print(f"  ブレード根遠心力(40K)     = {results['40K最悪']['F_cf']:.1f} N")
+    worst = cfg.RPM_EVALUATION[0][0]   # 強度評価の最悪ケース(RPM_EVALUATION 先頭)
+    sf_line = " / ".join(f"{name} {results[name]['SF']:.1f}"
+                         for name, _ in cfg.RPM_EVALUATION)
+    print(f"  ブレード根遠心力(40K)     = {results[worst]['F_cf']:.1f} N")
     print(f"  合成応力(40K最悪)         = "
-          f"{results['40K最悪']['sigma_total'] / 1e6:.2f} MPa")
-    print(f"  安全率 SF  40K / 27K / 22K  = "
-          f"{results['40K最悪']['SF']:.1f} / {results['27K最大動作']['SF']:.1f}"
-          f" / {results['22K巡航']['SF']:.1f}")
+          f"{results[worst]['sigma_total'] / 1e6:.2f} MPa")
+    print(f"  安全率 SF   {sf_line}")
     print(f"  翼端マッハ数(40K)         = "
           f"{compute_tip_mach(rpm_to_omega(cfg.RPM_MAX), cfg.R_PROPELLER):.3f}")
     print(f"  軸-ハブ嵌合 SF              = {sf_hub:.0f}")

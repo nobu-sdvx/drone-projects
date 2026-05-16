@@ -13,10 +13,10 @@ propeller_design_analysis.py
   空力性能を 2 つの独立手段で評価し交差検証する:
     (1) QPROP 1.22(MIT Drela、BEM ソルバ)   ← 主たる数値
     (2) 自作 BEM(ブレード要素運動量理論)    ← 念のための検算(±20% 想定)
-  併せて NeuralFoil でブレード断面翼型 4 候補を動作 Re 域で比較し 1 つに確定する。
+  併せて XFLR5 ポーラでブレード断面翼型 4 候補を動作 Re 域で比較し 1 つに確定する。
 
 入力:
-  airfoils/{s1223,e205,ag12}.dat            … ブレード断面翼型候補
+  xfoil_data/propeller_blade/*_T1_Re*.txt   … ブレード断面翼型ポーラ(XFLR5)
   qprop_data/powerup_propeller.prop          … QPROP プロペラ定義(暫定翼型)
   qprop_data/powerup_motor.mot               … QPROP モーター定義
   uiuc_propeller_data/.../cfnq_45p1_geom.txt … Crazyflie 形状(出典)
@@ -25,7 +25,7 @@ propeller_design_analysis.py
   - propeller_3view.png            プロペラ三面図
   - blade_chord_distribution.png   弦長分布 c(r)(自作 vs Crazyflie)
   - blade_twist_distribution.png   ねじり角分布 β(r)(自作 vs Crazyflie)
-  - airfoil_polars.png             ブレード断面翼型ポーラ(NeuralFoil)
+  - airfoil_polars.png             ブレード断面翼型ポーラ(XFLR5)
   - thrust_vs_rpm_curves.png       推力 vs RPM(V=0,5,7.5,9 m/s)
   - efficiency_vs_J.png            プロペラ効率 η vs 前進比 J
   - qprop_data/powerup_propeller_refined.prop  … 翼型確定後の QPROP 定義
@@ -35,6 +35,8 @@ propeller_design_analysis.py
 """
 
 import os
+import sys
+import glob
 import subprocess
 from dataclasses import dataclass
 
@@ -44,7 +46,16 @@ import matplotlib
 matplotlib.use("Agg")  # GUI 無し環境でも保存できるように
 import matplotlib.pyplot as plt
 
+# 図中の日本語が豆腐(□)にならないよう Windows 標準の日本語フォントを使う
+matplotlib.rcParams["font.sans-serif"] = ["Yu Gothic", "MS Gothic", "Meiryo",
+                                          "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
+
 import propeller_config as cfg
+
+# Windows の既定コンソール(cp932)では日本語・中点が化けるため UTF-8 に固定
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 
 # =============================================================================
@@ -99,6 +110,7 @@ def load_blade_geometry_from_crazyflie(D: float = cfg.D_PROPELLER,
 
     R = D / 2.0
     chord = c_R * R                          # c [m] = (c/R) * R
+    chord[0] = cfg.C_ROOT                    # 根本は強度設計の根太め化値に一元化(D5)
     twist = np.radians(beta_deg)             # β [rad]
 
     return BladeGeometry(
@@ -133,80 +145,81 @@ def compute_reynolds_distribution(geom: BladeGeometry, rpm: float,
 
 
 # =============================================================================
-# 翼型ポーラ(NeuralFoil)
+# 翼型ポーラ(XFLR5)
 # =============================================================================
 
-def _ensure_flat_plate_dat() -> str:
+def _read_xflr5_polar(prefix: str, Re: int) -> tuple:
     """
-    候補3「薄キャンバ平板」を NACA 4402(4% キャンバ・2% 厚)で近似した
-    .dat を生成する(無ければ作成)。極低Re域では薄翼が有利という設計書 §4.4
-    の候補を数値比較に乗せるため。
+    xfoil_data/propeller_blade/{prefix}_T1_Re{Re:05d}_N*.txt を 1 枚読み込む。
+    NCrit 部分(N5 / N50 等)はファイルごとの表記揺れがあるためワイルドカード。
 
     Returns:
-        生成した .dat ファイルのパス
+        (alpha, CL, CD) いずれも昇順 alpha の np.ndarray
     """
-    path = os.path.join(cfg.AIRFOIL_DIR, "flatplate4402.dat")
-    if os.path.exists(path):
-        return path
+    pattern = os.path.join(cfg.PROPELLER_BLADE_POLAR_DIR,
+                           f"{prefix}_T1_Re{Re:05d}_N*.txt")
+    matches = sorted(glob.glob(pattern))
+    if not matches:
+        raise FileNotFoundError(f"XFLR5 ポーラ未検出: {pattern}")
 
-    # NACA 4 桁(4402)の標準式で座標生成
-    m, p, t = 0.04, 0.40, 0.02
-    x = (1 - np.cos(np.linspace(0, np.pi, 80))) / 2.0  # 余弦間隔
-    yc = np.where(x < p,
-                  m / p ** 2 * (2 * p * x - x ** 2),
-                  m / (1 - p) ** 2 * ((1 - 2 * p) + 2 * p * x - x ** 2))
-    dyc = np.where(x < p,
-                   2 * m / p ** 2 * (p - x),
-                   2 * m / (1 - p) ** 2 * (p - x))
-    theta = np.arctan(dyc)
-    yt = 5 * t * (0.2969 * np.sqrt(x) - 0.1260 * x - 0.3516 * x ** 2
-                  + 0.2843 * x ** 3 - 0.1015 * x ** 4)
-    xu, yu = x - yt * np.sin(theta), yc + yt * np.cos(theta)
-    xl, yl = x + yt * np.sin(theta), yc - yt * np.cos(theta)
+    with open(matches[0], "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
 
-    with open(path, "w") as f:
-        f.write("NACA4402 (thin cambered plate proxy)\n")
-        for xi, yi in zip(xu[::-1], yu[::-1]):       # 上面 TE->LE
-            f.write(f" {xi:.6f}  {yi:.6f}\n")
-        for xi, yi in zip(xl[1:], yl[1:]):            # 下面 LE->TE
-            f.write(f" {xi:.6f}  {yi:.6f}\n")
-    print(f"  生成: {path}(薄キャンバ平板の代用 NACA4402)")
-    return path
+    # 「alpha CL CD ...」ヘッダ行の 2 行先(ダッシュ行の次)から表本体
+    start = None
+    for i, ln in enumerate(lines):
+        if ln.lstrip().lower().startswith("alpha"):
+            start = i + 2
+            break
+    if start is None:
+        raise ValueError(f"ヘッダ行が見つかりません: {matches[0]}")
+
+    rows = []
+    for ln in lines[start:]:
+        parts = ln.split()
+        if len(parts) < 3:
+            continue
+        try:
+            rows.append((float(parts[0]), float(parts[1]), float(parts[2])))
+        except ValueError:
+            continue   # 非収束行・空行はスキップ
+    if not rows:
+        raise ValueError(f"データ行が読めません: {matches[0]}")
+
+    rows.sort(key=lambda r: r[0])
+    arr = np.array(rows)
+    return arr[:, 0], arr[:, 1], arr[:, 2]
 
 
 def load_airfoil_polars(airfoil_name: str, re_values: list,
                         alpha_deg: np.ndarray = None) -> dict:
     """
-    NeuralFoil でブレード断面翼型のポーラを取得する。
+    XFLR5(v6.62)で計算済みのブレード断面翼型ポーラを読み込み、(Re, α) の
+    2 次元テーブルにする。スクリーニング・QPROP 係数フィット・自作 BEM が
+    共通で参照する(解答根拠を XFLR5 に一本化、§5 レビュー D4 対応)。
 
-    各 Re ごとに CL-α, CD-α を計算し、後段の BEM が 2D 補間できる形で返す。
+    各 Re のポーラを共通 α グリッドへ線形補間する。XFLR5 の収束 α 範囲
+    (概ね -5〜10°)外は端点クランプ(外挿しない保守処理)。
 
     Args:
-        airfoil_name: 翼型名(cfg.AIRFOIL_CANDIDATES のキー、または "FlatPlate")
+        airfoil_name: 翼型名(cfg.AIRFOIL_XFLR5_PREFIX のキー)
         re_values: ポーラを取得する Re のリスト
-        alpha_deg: α グリッド [deg]。省略時 -6〜14° を 0.5° 刻み
+        alpha_deg: α グリッド [deg]。省略時 -5〜10° を 0.5° 刻み
 
     Returns:
         dict: {'name', 're_values', 'alpha', 'CL'(2D), 'CD'(2D)}
               CL[i, j] = Re=re_values[i], alpha=alpha[j] の CL
     """
-    import neuralfoil as nf
-
     if alpha_deg is None:
-        alpha_deg = np.arange(-6.0, 14.01, 0.5)
+        alpha_deg = np.arange(-5.0, 10.01, 0.5)
 
-    if airfoil_name == "FlatPlate":
-        dat_path = _ensure_flat_plate_dat()
-    else:
-        dat_path = os.path.join(cfg.AIRFOIL_DIR, cfg.AIRFOIL_CANDIDATES[airfoil_name])
-
+    prefix = cfg.AIRFOIL_XFLR5_PREFIX[airfoil_name]
     cl = np.zeros((len(re_values), len(alpha_deg)))
     cd = np.zeros((len(re_values), len(alpha_deg)))
     for i, re in enumerate(re_values):
-        out = nf.get_aero_from_dat_file(filename=dat_path, alpha=alpha_deg,
-                                        Re=re, model_size="xlarge")
-        cl[i, :] = out["CL"]
-        cd[i, :] = np.maximum(out["CD"], 1e-4)  # ゼロ割防止
+        a, c_l, c_d = _read_xflr5_polar(prefix, int(re))
+        cl[i, :] = np.interp(alpha_deg, a, c_l)
+        cd[i, :] = np.maximum(np.interp(alpha_deg, a, c_d), 1e-4)
 
     return {"name": airfoil_name, "re_values": np.array(re_values, dtype=float),
             "alpha": alpha_deg, "CL": cl, "CD": cd}
@@ -251,10 +264,10 @@ def screen_airfoil_candidates() -> dict:
         dict: {翼型名: {'polars', 'LD_max', 'alpha_LDmax', 'CL_LDmax'}}
     """
     print("\n" + "─" * 72)
-    print(" 翼型スクリーニング(ブレード断面、NeuralFoil、動作Re域)")
+    print(" 翼型スクリーニング(ブレード断面、XFLR5 ポーラ、動作Re域)")
     print("─" * 72)
-    candidates = list(cfg.AIRFOIL_CANDIDATES.keys()) + ["FlatPlate"]
-    re_eval = 14000  # 75%R 近傍の代表 Re(設計書 §4.4)
+    candidates = list(cfg.AIRFOIL_XFLR5_PREFIX.keys())
+    re_eval = cfg.RE_REP  # 75%R 近傍の代表 Re(設計書 §4.4)
 
     results = {}
     print(f"\n  {'翼型':<12}{'L/D_max':>10}{'α@LDmax':>10}{'CL@LDmax':>10}"
@@ -395,9 +408,14 @@ def run_qprop(prop_file: str, motor_file: str, V: float, rpm: float,
     RPM を直接指定するため推力・トルクはモーターパラメータに非依存
     (handoff §2.3 注記)。qprop.exe は静的リンク済みで PATH 非依存。
 
+    重要(Windows 移植時のハマりどころ):
+      QPROP(Fortran)のファイル名バッファは 48 文字しかなく、長い絶対パスは
+      途中で切られて「Prop file not found → 既定プロペラ」になる。これを避け、
+      cwd を qprop_data/ に固定してファイル名のみを渡す。
+
     Args:
-        prop_file: .prop ファイルパス
-        motor_file: .mot ファイルパス
+        prop_file: .prop ファイルパス(絶対/相対どちらでも可、basename を使用)
+        motor_file: .mot ファイルパス(同上)
         V: 機体速度 [m/s]
         rpm: 回転数 [rpm]
         volt: 電圧 [V](0 で RPM 指定モード)
@@ -407,11 +425,14 @@ def run_qprop(prop_file: str, motor_file: str, V: float, rpm: float,
               'rpm'[rpm], 'CT', 'CP', 'V'[m/s]
     """
     result = subprocess.run(
-        [cfg.QPROP_BIN, prop_file, motor_file, str(V), str(rpm), str(volt)],
-        capture_output=True, text=True, timeout=60,
+        [cfg.QPROP_BIN, os.path.basename(prop_file),
+         os.path.basename(motor_file), str(V), str(rpm), str(volt)],
+        capture_output=True, text=True, timeout=60, cwd=cfg.QPROP_DATA_DIR,
     )
     if result.returncode != 0:
         raise RuntimeError(f"QPROP 異常終了:\n{result.stderr}\n{result.stdout}")
+    if "not found" in result.stdout:
+        raise RuntimeError(f"QPROP がファイルを読めません:\n{result.stdout[:300]}")
 
     # 出力をパース: "V(m/s) rpm Dbeta T(N) ..." ヘッダ直後の数値行
     lines = result.stdout.splitlines()
@@ -467,7 +488,7 @@ def fit_qprop_airfoil_params(polars: dict) -> dict:
     Returns:
         dict: QPROP .prop に書く翼型係数
     """
-    re_ref = 16000.0
+    re_ref = float(cfg.RE_REP)
     a_deg = polars["alpha"]
     cl = np.array([lookup_clcd(polars, a, re_ref)[0] for a in a_deg])
     cd = np.array([lookup_clcd(polars, a, re_ref)[1] for a in a_deg])
@@ -512,13 +533,13 @@ def write_refined_prop(geom: BladeGeometry, params: dict,
     lines = []
     lines.append("")
     lines.append(f"POWERUP 4.0 self-made propeller D=36mm P=27mm "
-                 f"({geom.airfoil_name} blade section, NeuralFoil-refined)")
+                 f"({geom.airfoil_name} blade section, XFLR5-refined)")
     lines.append("")
     lines.append(f" {geom.n_blades}     {geom.radius:.4f}   "
                  f"! Nblades   R [m]")
     lines.append("")
     lines.append(f"! Blade airfoil: {geom.airfoil_name}, "
-                 f"NeuralFoil xlarge polar fit @ Re={params['REref']:.0f}")
+                 f"XFLR5 polar fit @ Re={params['REref']:.0f}")
     lines.append(f" {params['CL0']:.4f}   {params['CL_a']:.4f}   "
                  f"! CL0       CL_a  (per rad)")
     lines.append(f" {params['CLmin']:.4f}   {params['CLmax']:.4f}   "
@@ -549,12 +570,12 @@ def write_refined_prop(geom: BladeGeometry, params: dict,
 # =============================================================================
 
 def plot_airfoil_polars(screen_results: dict, best: str, save_path: str):
-    """翼型 4 候補のポーラ比較(計算書図 #4)。代表 Re=14,000。"""
+    """翼型 4 候補のポーラ比較(計算書図 #4)。代表 Re=15,000。"""
     cfg.ensure_plots_dir()
-    re_eval = 14000
+    re_eval = cfg.RE_REP
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
     colors = {"S1223": "#d32f2f", "E205": "#1976d2", "AG12": "#388e3c",
-              "FlatPlate": "#f57c00"}
+              "camber4_thick2": "#f57c00"}
     for name, res in screen_results.items():
         p = res["polars"]
         cl = np.array([lookup_clcd(p, a, re_eval)[0] for a in p["alpha"]])
@@ -571,7 +592,7 @@ def plot_airfoil_polars(screen_results: dict, best: str, save_path: str):
     for ax in axes:
         ax.grid(alpha=0.3)
         ax.legend(fontsize=8)
-    fig.suptitle(f"Blade-section airfoil candidates  (NeuralFoil, Re={re_eval})",
+    fig.suptitle(f"Blade-section airfoil candidates  (XFLR5, Re={re_eval})",
                  fontweight="bold")
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -753,7 +774,7 @@ def main():
     print(" QPROP 翼型パラメータの精緻化(.prop 更新)")
     print("─" * 72)
     params = fit_qprop_airfoil_params(screen_results[best_airfoil]["polars"])
-    print(f"  翼型 {best_airfoil} の NeuralFoil フィット結果(Re=16,000):")
+    print(f"  翼型 {best_airfoil} の XFLR5 フィット結果(Re={cfg.RE_REP:,}):")
     print(f"    CL0={params['CL0']:.3f}  CL_a={params['CL_a']:.2f}/rad  "
           f"CLmax={params['CLmax']:.2f}")
     print(f"    CD0={params['CD0']:.4f}  CD2u={params['CD2u']:.3f}  "
@@ -796,19 +817,45 @@ def main():
     t_static_max = sweeps[0.0]["thrust"][-1]   # V=0, 40K
     print(f"  最大静推力(40K rpm, V=0)= {t_static_max * 1000:.1f} mN")
 
+    # 巡航必要推力に到達する RPM(V=7.5)を細かいスイープで特定
+    fine_rpm = np.arange(20000.0, 34001.0, 1000.0)
+    fine = qprop_sweep_rpm(refined_prop, motor_file, cfg.V_CRUISE, fine_rpm)
+    t_req = cfg.T_REQUIRED_PER_MOTOR
+    if fine["thrust"].min() <= t_req <= fine["thrust"].max():
+        rpm_cruise_thrust = float(np.interp(t_req, fine["thrust"], fine["rpm"]))
+        print(f"  巡航必要推力 {t_req * 1000:.1f} mN 到達 RPM(V=7.5)"
+              f"= {rpm_cruise_thrust:.0f} rpm  "
+              f"(モーター上限 {cfg.RPM_MAX} rpm の "
+              f"{rpm_cruise_thrust / cfg.RPM_MAX * 100:.0f}%)")
+        qp_cruise = run_qprop(refined_prop, motor_file, cfg.V_CRUISE,
+                              rpm_cruise_thrust)
+        print(f"  巡航動作点({rpm_cruise_thrust:.0f}rpm, V=7.5)"
+              f": T={qp_cruise['thrust'] * 1000:.1f} mN, "
+              f"η={qp_cruise['eff_prop']:.3f}")
+    else:
+        rpm_cruise_thrust = None
+        print(f"  [注意] 必要推力 {t_req * 1000:.1f} mN は "
+              f"{fine_rpm[0]:.0f}-{fine_rpm[-1]:.0f} rpm の範囲外")
+
     # ---------- 効率 vs 前進比 J ----------
-    V_range = np.linspace(0.5, 12.0, 16)
+    # 高前進比(推力≈0 近傍)では QPROP の effprop が破綻するため、
+    # 推力 > 0 かつ η が物理範囲(0〜1)の点のみ採用する。
+    V_range = np.linspace(0.5, 11.0, 22)
     n = cfg.RPM_CRUISE / 60.0
     J = V_range / (n * cfg.D_PROPELLER)
-    eff_J = []
+    eff_J, thr_J = [], []
     for V in V_range:
-        eff_J.append(run_qprop(refined_prop, motor_file, V,
-                               cfg.RPM_CRUISE)["eff_prop"])
+        res = run_qprop(refined_prop, motor_file, V, cfg.RPM_CRUISE)
+        eff_J.append(res["eff_prop"])
+        thr_J.append(res["thrust"])
     eff_J = np.array(eff_J)
+    thr_J = np.array(thr_J)
+    physical = (thr_J > 0) & (eff_J > 0) & (eff_J < 1.0)
     J_cruise = cfg.V_CRUISE / (n * cfg.D_PROPELLER)
-    i_best = int(np.argmax(eff_J))
+    i_best = int(np.where(physical)[0][np.argmax(eff_J[physical])])
     print(f"  巡航前進比 J = {J_cruise:.3f}")
     print(f"  最大効率 η = {eff_J[i_best]:.3f} @ J = {J[i_best]:.3f}")
+    print(f"  推力ゼロ到達 J ≈ {J[thr_J > 0][-1]:.3f}（これ以上は windmill 域)")
 
     # ---------- プロット生成 ----------
     print("\n" + "─" * 72)
@@ -821,7 +868,7 @@ def main():
     plot_airfoil_polars(screen_results, best_airfoil,
                         cfg.plot_path("airfoil_polars.png"))
     plot_thrust_vs_rpm(sweeps, cfg.plot_path("thrust_vs_rpm_curves.png"))
-    plot_efficiency_vs_J(J, eff_J, J_cruise,
+    plot_efficiency_vs_J(J[physical], eff_J[physical], J_cruise,
                          cfg.plot_path("efficiency_vs_J.png"))
 
     print("\n" + "=" * 72)
@@ -833,6 +880,8 @@ def main():
     print(f"  巡航効率(QPROP)     = {qp['eff_prop']:.3f}")
     print(f"  最大効率              = {eff_J[i_best]:.3f} @ J={J[i_best]:.3f}")
     print(f"  最大静推力(40K rpm) = {t_static_max * 1000:.1f} mN")
+    if rpm_cruise_thrust:
+        print(f"  巡航必要推力到達RPM   = {rpm_cruise_thrust:.0f} rpm (V=7.5)")
     print("\n[完了]")
 
     return {"geom": geom, "best_airfoil": best_airfoil, "qprop_design": qp,
