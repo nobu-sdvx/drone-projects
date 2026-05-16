@@ -163,11 +163,12 @@ AIRFOIL_XFLR5_PREFIX = {
 RE_OPERATING = [8000, 10000, 12000, 15000, 20000]
 RE_REP = 15000   # 75%R 代表点(翼型スクリーニング・QPROP フィットの基準 Re)
 
-# 三点評価の RPM(設計書 v0.3 §5、40K 最悪 / 27K 最大動作 / 22K 巡航)
+# 三点評価の RPM(設計書 v0.3 §5、最悪 / 最大動作 / 巡航)
+# ラベルは各 RPM 定数から自動生成する(RPM を変えてもラベルが drift しない)
 RPM_EVALUATION = [
-    ("40K最悪",      RPM_MAX),       # 公式仕様最大、強度評価の最悪ケース
-    ("27K最大動作",  RPM_MAX_OP),    # V=9 m/s 時
-    ("25K巡航",      RPM_CRUISE),    # 巡航動作点(QPROP 確定 25,122 rpm)
+    (f"{RPM_MAX // 1000}K最悪",             RPM_MAX),     # 公式仕様最大、強度評価の最悪ケース
+    (f"{round(RPM_MAX_OP / 1000)}K最大動作", RPM_MAX_OP),  # V=9 m/s 時
+    (f"{round(RPM_CRUISE / 1000)}K巡航",     RPM_CRUISE),  # 巡航動作点(QPROP 確定)
 ]
 
 

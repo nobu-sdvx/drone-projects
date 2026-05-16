@@ -725,7 +725,7 @@ def plot_efficiency_vs_J(J: np.ndarray, eff: np.ndarray, J_cruise: float,
     ax.plot(J[i_best], eff[i_best], "r*", ms=16,
             label=f"η_max = {eff[i_best]:.3f} @ J={J[i_best]:.3f}")
     ax.set(xlabel="advance ratio  J = V/(nD)", ylabel="propeller efficiency η",
-           title="Efficiency vs advance ratio  (QPROP, RPM=22,100)")
+           title=f"Efficiency vs advance ratio  (QPROP, RPM={cfg.RPM_CRUISE:,.0f})")
     ax.grid(alpha=0.3)
     ax.legend()
     plt.tight_layout()
@@ -788,7 +788,8 @@ def main():
 
     # ---------- 設計点の QPROP vs 自作 BEM 交差検証 ----------
     print("\n" + "─" * 72)
-    print(" 設計点性能(巡航 22,100rpm / V=7.5m/s):QPROP vs 自作BEM")
+    print(f" 設計点性能(巡航 {cfg.RPM_CRUISE:,.0f}rpm / V={cfg.V_CRUISE}m/s):"
+          f"QPROP vs 自作BEM")
     print("─" * 72)
     qp = run_qprop(refined_prop, motor_file, cfg.V_CRUISE, cfg.RPM_CRUISE)
     bem = bem_analysis(geom, cfg.RPM_CRUISE, cfg.V_CRUISE,

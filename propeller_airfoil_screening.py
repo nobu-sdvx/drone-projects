@@ -42,6 +42,13 @@ matplotlib.rcParams["font.sans-serif"] = ["Yu Gothic", "MS Gothic", "Meiryo",
                                           "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
+# Windows 既定コンソール(cp932)で日本語が化けないよう UTF-8 に固定
+# (他 3 スクリプトと同じ処理。出力の整合のため)
+import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # ---------- 設定 ----------
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "xfoil_data", "propeller_blade")
