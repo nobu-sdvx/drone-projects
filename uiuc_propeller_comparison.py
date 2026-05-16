@@ -258,7 +258,8 @@ def main():
           f" ({cfg.D_PROPELLER * 1e3:.0f}/{D_CRAZYFLIE * 1e3:.0f})⁴ = {ratio:.3f}")
     print(f"  → 単純スケーリング推力 = {t_scaled * 1e3:.2f} mN "
           f"({t_scaled / cfg.G * 1e3:.2f} g重)")
-    print(f"  ※ これは静推力(J=0)ベース。前進飛行では増加する。")
+    print(f"  ※ これは静推力(J=0)ベース。固定ピッチ・固定RPMでは前進飛行"
+          f"(前進比 J↑)で推力は減少する。")
 
     # ---------- 自作プロペラの QPROP 静推力スイープ ----------
     print("\n" + "─" * 72)
