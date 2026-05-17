@@ -48,22 +48,37 @@ except ImportError:
 # =============================================================================
 # Section 1: 機体定数(根拠付き)
 # =============================================================================
+# ★v3 更新(2026-05-17):ツインブーム + U字型尾翼 + ロッドフェアリング構成。
+#   §3 尾翼U字版v3・§5 プロペラ・§7 重量重心U字版 と数値を統一。
 
-# --- 機体寸法(requirements.md §3.2) ---
+# --- 機体寸法(§2 主翼 概略計算書)---
 MAC_MM = 60.0           # 平均空力翼弦 [mm](矩形翼の翼弦)
 WING_AREA_CM2 = 216.0   # 翼面積 [cm²](360×60mm)
 SPAN_MM = 360.0         # 翼幅 [mm]
 AR = 6.0                # アスペクト比
 
-# --- 尾翼寸法(requirements.md §3.2) ---
-TAIL_X_MM = 305.0       # 尾翼CG位置 [mm](機体全長の最後端)
-SH_CM2 = 49.0           # 水平尾翼面積 [cm²](140×35mm)
-SV_CM2 = 20.0           # 垂直尾翼面積 [cm²](50×40mm)
+# --- 尾翼寸法(§3 尾翼U字版v3 で確定)---
+SH_CM2 = 53.28          # 水平尾翼面積 [cm²](148×36mm)
+SV_CM2 = 24.0           # 垂直尾翼面積 [cm²](40×30mm × U字2枚)
+AR_H = 148.0 / 36.0     # 水平尾翼アスペクト比 = 4.111(148×36mm)
 
-# --- 中立点位置(Drela MIT 16.01 簡易式)---
-# x_np/MAC ≈ 1/4 + (1 - 4/(AR+2)) × Vh × (1+2/AR)/(1+2/AR_h)
-# AR=6, AR_h=4(140/35=4)、Vh=0.55 → x_np ≈ 0.494 MAC
-X_NP_MAC_FRAC = 0.494
+# 機体最後端 305 mm。水平尾翼AC = 後端 − 0.75·c_h。
+# v3 では尾翼AC位置 277.25 mm を機体配置のアンカーとして固定する
+# (§3 v3 改訂:c_h を 37→36 mm に微調整しても尾翼AC位置は不変)。
+X_TAIL_END_MM = 305.0   # 機体最後端 = 尾翼質量の代表位置 [mm]
+X_TAIL_AC_MM = 277.25   # 水平尾翼AC位置 [mm](§3 v3 固定アンカー)
+
+# --- 中立点位置(Drela MIT 16.01 "Lab 8 Notes" 簡易式)---
+# x_np/MAC = 1/4 + (1 - 4/(AR+2)) × Vh × (1+2/AR)/(1+2/AR_h)
+VH_TARGET = 0.55        # 水平尾翼容積比 設計目標(§3)
+
+
+def neutral_point_frac(ar=AR, ar_h=AR_H, vh=VH_TARGET):
+    """中立点位置 x_np/MAC を Drela 近似式で計算する。"""
+    return 0.25 + (1.0 - 4.0 / (ar + 2.0)) * vh * (1.0 + 2.0 / ar) / (1.0 + 2.0 / ar_h)
+
+
+X_NP_MAC_FRAC = neutral_point_frac()   # v3: AR_h=4.111 → 0.497
 
 # --- POWERUP 4.0(★Nobu実測値 2026-05-06★)---
 POWERUP_MASS_G = 17.0       # 実測(プロペラ抜き、公式19gはストック品込み)
@@ -74,11 +89,11 @@ POWERUP_LENGTH_MM = 220.0   # 公式仕様
 CG_TARGETS = [0.30, 0.35]   # 30%、35% MAC
 
 # --- 機体総重量シナリオ(感度解析用) ---
-# 主シナリオを基準に、±2g程度の不確実性を見込む
+# 主シナリオ(36.5g)を基準に、±2g程度の不確実性を見込む
 WEIGHT_SCENARIOS = {
     "optimistic": {"misc_extra": -1.5, "label": "楽観 (W_min)"},
     "main":       {"misc_extra":  0.0, "label": "主シナリオ"},
-    "pessimistic":{"misc_extra": +2.5, "label": "悲観 (W_max)"},
+    "pessimistic":{"misc_extra": +2.0, "label": "悲観 (W_max)"},
 }
 
 
@@ -113,20 +128,27 @@ def get_components(wing_le_mm: float, scenario: str = "main") -> List[Component]
     misc_extra = WEIGHT_SCENARIOS[scenario]["misc_extra"]
     misc_mass = max(0.5, 3.0 + misc_extra)  # 接着剤等は0.5g下限
 
+    # v3 部品リスト(§7.2 ツインブーム+U字+ロッドフェアリング構成、全11部品)
     return [
-        Component("POWERUP 4.0",        POWERUP_MASS_G, POWERUP_CG_X_MM,
+        Component("POWERUP 4.0",            POWERUP_MASS_G, POWERUP_CG_X_MM,
                   "実測値、プロペラ抜き"),
-        Component("胴体フェアリング",     3.0, 110.0,
-                  "POWERUPロッド被覆、CG≈POWERUP CG付近"),
-        Component("自作プロペラ+マウント", 5.0, 230.0,
-                  "POWERUPモーター(x≈220)直後"),
-        Component("主翼 AG36",           5.0, wing_le_mm + MAC_MM/2,
+        Component("胴体取付フェアリング",     3.0, 110.0,
+                  "POWERUP固定用ジグ・サドルバンド"),
+        Component("ロッドフェアリング本体",   0.70, 132.7,
+                  "EPSかまぼこ型、露出ロッド被覆"),
+        Component("主翼サドル",              0.05, 158.3,
+                  "フェアリング上面の主翼着座凸部"),
+        Component("自作プロペラ+マウント",   5.0, 230.0,
+                  "POWERUPモーター(x≈220)直後、2基分"),
+        Component("主翼 AG36",               5.0, wing_le_mm + MAC_MM/2,
                   "矩形翼、幾何中心 = LE + MAC/2"),
-        Component("尾翼ブーム",          0.5, (POWERUP_LENGTH_MM + TAIL_X_MM)/2,
-                  "x=220~305のCFRPロッド、85mm延長"),
-        Component("十字尾翼 (H+V)",      2.0, TAIL_X_MM,
-                  "尾翼後端"),
-        Component("接着剤・補強・配線",   misc_mass, 170.0,
+        Component("ツインブーム",            1.8, 213.0,
+                  "φ2mm CFRP × 2本、主翼貫通"),
+        Component("水平尾翼",                0.6, X_TAIL_END_MM,
+                  "EPS+φ1mm CFRPスパー、機体最後端"),
+        Component("垂直尾翼 ×2(U字)",       0.32, X_TAIL_END_MM,
+                  "0.16g/枚 × 2、ブーム後端から上向き"),
+        Component("接着剤・補強・配線",       misc_mass, 170.0,
                   f"機体中央付近に分布(scenario={scenario})"),
     ]
 
@@ -205,10 +227,10 @@ def compute_tail_volume(wing_le_mm: float) -> Dict:
         Vh = Sh × ℓh / (S × MAC)
         Vv = Sv × ℓv / (S × b)
 
-    教科書範囲: Vh = 0.5 ~ 1.0、Vv = 0.02 ~ 0.05
+    Drela 推奨範囲: Vh = 0.30 ~ 0.60、Vv = 0.02 ~ 0.05
     """
     wing_ac_mm = wing_le_mm + 0.25 * MAC_MM
-    lh_mm = TAIL_X_MM - wing_ac_mm
+    lh_mm = X_TAIL_AC_MM - wing_ac_mm
 
     # 単位を [cm] に揃える
     lh_cm = lh_mm / 10.0
@@ -242,7 +264,7 @@ def plot_side_view(wing_le_mm: float, scenario: str, save_path: str,
     fig, ax = plt.subplots(figsize=(13, 5))
 
     # 胴体ロッドを表現(POWERUP+延長ブーム)
-    ax.plot([0, TAIL_X_MM], [0, 0], '-', color='gray', lw=4, alpha=0.4)
+    ax.plot([0, X_TAIL_END_MM], [0, 0], '-', color='gray', lw=4, alpha=0.4)
     ax.plot([0, POWERUP_LENGTH_MM], [0, 0], '-', color='black', lw=3, alpha=0.7)
 
     # 主翼を矩形で表現
@@ -253,7 +275,7 @@ def plot_side_view(wing_le_mm: float, scenario: str, save_path: str,
             label='主翼 AG36' if JP_OK else 'Wing AG36')
 
     # 尾翼を矩形で
-    ax.fill([TAIL_X_MM-15, TAIL_X_MM+5, TAIL_X_MM+5, TAIL_X_MM-15, TAIL_X_MM-15],
+    ax.fill([X_TAIL_END_MM-15, X_TAIL_END_MM+5, X_TAIL_END_MM+5, X_TAIL_END_MM-15, X_TAIL_END_MM-15],
             [-15, -15, 15, 15, -15], alpha=0.25, color='darkorange',
             label='尾翼' if JP_OK else 'Tail')
 
@@ -279,7 +301,7 @@ def plot_side_view(wing_le_mm: float, scenario: str, save_path: str,
                label=f'NP = {sm["x_np_mm"]:.1f}mm' if JP_OK else f'NP = {sm["x_np_mm"]:.1f}mm')
 
     # 設定
-    ax.set_xlim(-20, TAIL_X_MM + 30)
+    ax.set_xlim(-20, X_TAIL_END_MM + 30)
     ax.set_ylim(-50, 200)
     ax.set_xlabel('機首からの距離 x [mm]' if JP_OK else 'Distance from nose x [mm]')
     ax.set_aspect('equal', adjustable='box')
@@ -452,8 +474,8 @@ def analyze_configuration(target_mac_frac: float, scenario: str = "main"):
 
 def main():
     print_separator()
-    print("  §7 重量配分・重心解析")
-    print(f"  実行日: 2026-05-06  POWERUP実測値: {POWERUP_MASS_G}g @ x={POWERUP_CG_X_MM}mm")
+    print("  §7 重量配分・重心解析  (v3: ツインブーム+U字+ロッドフェアリング)")
+    print(f"  v3更新: 2026-05-17  POWERUP実測値: {POWERUP_MASS_G}g @ x={POWERUP_CG_X_MM}mm")
     print_separator()
 
     # 出力ディレクトリ(このスクリプトと同じ階層の output/)
@@ -484,11 +506,11 @@ def main():
     # === 重量シナリオ感度解析 ===
     print()
     print_separator('-')
-    print("  重量シナリオ感度解析(CG目標30%固定)")
+    print("  重量シナリオ感度解析(設計点 CG目標35%固定)")
     print_separator('-')
     print(f"  {'シナリオ':<20} {'W [g]':>8} {'wing_LE [mm]':>14} {'ℓh [mm]':>10} {'Vh':>8}")
     for scn_key in ["optimistic", "main", "pessimistic"]:
-        wl = find_wing_le_for_cg_target(0.30, scn_key)
+        wl = find_wing_le_for_cg_target(0.35, scn_key)
         comps = get_components(wl, scn_key)
         W = compute_total_mass(comps)
         tail = compute_tail_volume(wl)

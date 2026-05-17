@@ -804,7 +804,7 @@ def main():
     diff = abs(qp["thrust"] - bem["thrust"]) / qp["thrust"] * 100
     print(f"\n  推力の QPROP-BEM 乖離 = {diff:.1f} %  "
           f"({'✓ ±20%以内' if diff <= 20 else '△ 要確認'})")
-    print(f"  必要推力 26.5 mN に対し QPROP 予測は "
+    print(f"  必要推力 {cfg.T_REQUIRED_PER_MOTOR * 1000:.1f} mN に対し QPROP 予測は "
           f"{qp['thrust'] * 1000 / (cfg.T_REQUIRED_PER_MOTOR * 1000) * 100:.0f}%")
 
     # ---------- 推力 vs RPM 曲線(QPROP)----------
@@ -877,7 +877,7 @@ def main():
     print("=" * 72)
     print(f"  ブレード断面翼型      = {best_airfoil}")
     print(f"  巡航推力(QPROP)     = {qp['thrust'] * 1000:.2f} mN "
-          f"(必要 26.5 mN)")
+          f"(必要 {cfg.T_REQUIRED_PER_MOTOR * 1000:.1f} mN)")
     print(f"  巡航効率(QPROP)     = {qp['eff_prop']:.3f}")
     print(f"  最大効率              = {eff_J[i_best]:.3f} @ J={J[i_best]:.3f}")
     print(f"  最大静推力(40K rpm) = {t_static_max * 1000:.1f} mN")
