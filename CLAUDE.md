@@ -150,54 +150,64 @@ drone-projects/
 ├── CLAUDE.md                       ← このファイル
 ├── requirements.md                 ← 設計目標・自己設定要件
 ├── official_requirements.md        ← 公式要件
-├── progress_report_*.md            ← 日次進捗報告書
+│
+├── docs/                           ← 概略計算書(.md)・解析サマリー・進捗報告書
+│   ├── 概略計算書_主翼.md            ← §2
+│   ├── 概略計算書_尾翼_U字版_v3.md   ← §3
+│   ├── 概略計算書_胴体.md            ← §4(2026-05-17 新設)
+│   ├── 概略計算書_プロペラ.md         ← §5
+│   ├── 概略計算書_重量重心_U字版.md   ← §7
+│   ├── analysis_results_v3.md        ← 解析値と根拠スクリプトの整合台帳(単一の真実)
+│   ├── archive/                      ← 旧版計算書
+│   └── progress_report/              ← 日次進捗報告書
 │
 ├── airfoils/                       ← 翼型 .dat(Selig 形式、UIUC / Airfoil Tools 由来)
-├── xfoil_data/                     ← XFLR5/XFoil 2D ポーラー .txt
+├── xfoil_data/                     ← XFLR5/XFoil 2D ポーラー .txt(propeller_blade/ 含む)
 ├── xflr5_projects/                 ← XFLR5 プロジェクト .xfl
 ├── vlm_data/                       ← XFLR5 VLM 3D 解析の .txt(スパン方向データ)
-├── plots/                          ← Python が出力した PNG(ローカル一時保存)
+├── qprop_data/                     ← QPROP 入力/出力(.prop, .mot)
+├── uiuc_propeller_data/            ← UIUC プロペラ DB(Crazyflie 参照形状)
+├── plots/ , output/                ← Python 出力 PNG(ローカル一時保存)
 │
-├── screening.py                    ← 翼型一括スクリーニング
-├── plot_polars.py                  ← ポーラー図生成
-├── analysis_highres.py             ← 高精度モデル(xxxlarge)で再解析
-├── flight_envelope.py              ← 飛行包絡線・失速速度評価
-└── mainwing_structural_analysis.py ← 主翼構造解析(曲げモーメント検算 + 応力 + SF)
+├── screening.py / plot_polars.py / analysis_highres.py  ← 翼型スクリーニング(§2 準備)
+├── mainwing_structural_analysis.py        ← §2 主翼:VLM 読出 + 巡航外挿 + 翼根応力
+├── Tail_design_analysis.py                ← §3 尾翼:トリム・容積比・強度
+├── 2026-05-17_boom_attachment_analysis.py ← §4 胴体:ブーム接合方式変更の影響解析
+├── propeller_config.py                    ← §5 プロペラ:3スクリプト共有の凍結定数
+├── propeller_design_analysis.py           ← §5 プロペラ:空力性能(QPROP)
+├── propeller_structural_analysis.py       ← §5 プロペラ:遠心力・強度
+├── propeller_airfoil_screening.py / uiuc_propeller_comparison.py ← §5 補助
+├── Weight_cg_analysis.py                  ← §7 重量配分・重心・静安定
+└── flight_envelope.py                     ← §9 飛行包絡線・失速速度評価
 ```
 
-### 5.1 各スクリプトの役割と入出力
+### 5.1 計算書の章と解析スクリプトの対応
 
-| ファイル | 役割 | 主な入力 | 主な出力 |
-|---|---|---|---|
-| `screening.py` | 翼型候補を NeuralFoil で一括解析しランキング | `airfoils/*.dat` | コンソール表 |
-| `plot_polars.py` | CL-α、CL-CD、L/D-α の 3 図を PNG 化 | NeuralFoil 解析結果 | `plots/*.png` |
-| `analysis_highres.py` | 上位候補を `xxxlarge` モデルで再解析、xlarge との差分比較 | Top 候補の dat | コンソール + 比較図 |
-| `flight_envelope.py` | 速度 vs 必要 CL/利用可能 CL、失速速度の可視化 | 翼型データ + 機体諸元 | コンソール + 図 |
-| `mainwing_structural_analysis.py` | Cl 分布、曲げモーメント手計算、応力、安全率(170 行) | `vlm_data/spanwise_*.txt` | コンソール + `plots/*.png` |
+各章の数値は専用スクリプトで算出する。実行は `venv/Scripts/python.exe` + 環境変数 `PYTHONIOENCODING=utf-8`(Windows の cp932 で日本語 print が落ちるため)。
+
+| 章 | スクリプト | 役割 |
+|---|---|---|
+| §2 主翼 | `mainwing_structural_analysis.py` | VLM 生データ読出 → 巡航外挿 → 翼根曲げ・応力・SF |
+| §3 尾翼 | `Tail_design_analysis.py` | トリム尾翼力・容積比・寸法・強度・静安定 |
+| §4 胴体 | `2026-05-17_boom_attachment_analysis.py` | ブーム接合方式変更の重量・重心・強度影響 |
+| §5 プロペラ | `propeller_design_analysis.py`(空力)/ `propeller_structural_analysis.py`(強度)/ 定数は `propeller_config.py` | QPROP 空力性能・遠心力・安全率 |
+| §7 重量重心 | `Weight_cg_analysis.py` | 部品重量積み上げ → 重心 → 静安定・容積比 |
+| §9 包絡線 | `flight_envelope.py` | 速度 vs 必要/利用可能 CL、失速速度 |
+| §2 準備 | `screening.py` / `plot_polars.py` / `analysis_highres.py` | 翼型候補の NeuralFoil 一括スクリーニング |
 
 新規スクリプトを作る場合も、**「役割・入力・出力」を冒頭の docstring に明記** してから実装する。
 
-### 5.2 `mainwing_structural_analysis.py` の機能フロー(計算書 §2 の中核)
+### 5.2 解析値の整合管理(★最重要)
 
-このスクリプトは現時点で最も重要。改修時の参照用に詳細を残す。
+計算書の数値と、それを生むスクリプト・実行結果は **`docs/analysis_results_v3.md`** に集約する(解析値の単一の真実)。計算書の数値を変更するときは、まず該当スクリプトを更新・再実行し、`analysis_results_v3.md` を更新してから計算書に反映する。この順序を守ることで、文書間および文書とコードの数値ドリフトを防ぐ。
 
-**処理フロー**:
-1. XFLR5 OpPoint Export 形式 `.txt` を読込(ヘッダー値 + 38 行スパン方向データ)
-2. **Cl 分布プロット出力**(`cl_distribution_alpha3deg_cruise.png`、計算書貼付用)
-3. **半翼揚力 検算**:台形積分 vs W/2(目標誤差 < 数%)
-4. **翼根曲げモーメント手計算** M_root = ∫q·c·Cl·y dy **vs XFLR5 の `Bending` 出力**
-5. φ2mm CFRP スパーの応力・安全率算出(n=1 巡航時、n=`LOAD_FACTOR`=2 設計時)
-6. **曲げモーメント分布プロット出力**(`bending_moment_alpha3deg.png`、手計算と XFLR5 の重ねプロット)
-7. **重量感度解析**:`WEIGHT_SCENARIOS`(楽観 32.5g / 現実的 37g / 最悪 39g)で CL_req → α_cruise → M_cruise → σ_design → SF をスケーリング計算し、比較表をコンソール出力
-8. **重量感度プロット出力**(`weight_sensitivity.png`、W=25〜45g に対する σ_design(n=2) の曲線+3シナリオ点+許容応力ライン)
+**全章で統一する凍結値**(変更時は `analysis_results_v3.md` §5・§6 と整合を取ること):
+- 機体総重量:設計値 36.5 g / 重量内訳の見積もり 36.1 g(§7、ブーム埋め込み接合反映後)
+- 巡航速度 V = 7.5 m/s、動圧 q = 34.45 Pa
+- 主翼 Cm = −0.162(VLM 値 −0.16238 の3桁丸め)、CFRP 引張強度 σ_ult = 1500 MPa、荷重倍率 n = 2
+- 静安定:中立点 x_NP/c = 0.497、設計点 SM = 14.6 %、水平尾翼容積比 Vh = 0.552
 
-**重要パラメータ**(変更時は理由を残すこと):
-- `LOAD_FACTOR = 2` … 屋内低速のため安全側
-- `SIGMA_ULT = 1500e6` Pa … 典型値、**実購入品データシート値に要更新**(§3.2)
-- `WEIGHT_SCENARIOS` … 楽観/現実的/最悪の 3 点。修正時は調査レポート §H.1 と整合を取ること
-
-**numpy 互換性**:
-- numpy 2.x で `np.trapz` 削除済 → `np.trapezoid` フォールバック付きの `_trapz` ラッパー実装済
+**numpy 互換性**:numpy 2.x で `np.trapz` は削除済み。数値積分が必要な場合は `np.trapezoid` を使う。
 
 ---
 
@@ -283,17 +293,19 @@ spanwise_alpha{角度}deg_AR{AR値}_V{速度}ms_{日付}.txt
 
 ## 11. 計算書 §1〜§9 章立てと進捗(5/18 審査会向け)
 
-| 章 | 内容 | 状態 | 備考 |
+| 章 | 内容 | 状態 | 文書 |
 |---|---|---|---|
 | 1. 設計対象・要件整理 | `requirements.md` 流用 | 大部分完了 | |
-| **2. 主翼の概略設計** | VLM + 構造、本ファイル §2.2-2.3 が核 | **解析完了、文書化未** | 5/6〜5/7 想定 |
-| 3. 尾翼の概略設計 | Vh=0.55, Vv=0.04 起点、Cm=-0.162 入力 | 未着手 | 5/11 目標 |
-| 4. 胴体の概略設計 | カーボンロッド曲げ応力 | 未着手 | |
-| 5. プロペラの概略設計 | XROTOR + 翼根応力 | 未着手 | |
+| 2. 主翼の概略設計 | VLM + 構造(AG36、216 cm²) | **文書化完了** | `docs/概略計算書_主翼.md` |
+| 3. 尾翼の概略設計 | U字型尾翼、Vh=0.55, Vv=0.04、Cm=-0.162 入力 | **文書化完了** | `docs/概略計算書_尾翼_U字版_v3.md` |
+| 4. 胴体の概略設計 | ツインブーム(胴体構造)強度・主翼後縁埋め込み接合 | **文書化完了** | `docs/概略計算書_胴体.md`(2026-05-17 新設) |
+| 5. プロペラの概略設計 | QPROP + 遠心力・翼根応力 | **文書化完了** | `docs/概略計算書_プロペラ.md` |
 | 6. モーター・取付部 | 機構設計 | 未着手 | |
-| 7. 重量配分・重心 | 表 + 重心計算 | 未着手 | |
+| 7. 重量配分・重心 | 表 + 重心計算 + 静安定 | **文書化完了** | `docs/概略計算書_重量重心_U字版.md` |
 | 8. 衝突安全性 | 衝撃力・エネルギー | 未着手 | |
-| 9. 飛行包絡線 | 既存 `flight_envelope.py` 流用 | 既存資料あり | |
+| 9. 飛行包絡線 | `flight_envelope.py` 流用 | 既存資料あり | |
+
+各計算書の数値は `docs/analysis_results_v3.md`(解析値と根拠スクリプトの整合台帳)で一元管理する。
 
 ### 計算書の評価軸(構造設計編 PDF より)
 
@@ -315,3 +327,4 @@ spanwise_alpha{角度}deg_AR{AR値}_V{速度}ms_{日付}.txt
 |---|---|
 | 2026-05-06 | 初版作成 |
 | 2026-05-06 | v2:§2 に VLM 解析確定値・Cl 分布・飛行包絡線を追加。§3「未決事項の詳細」を独立化(失速速度A/B/C案、CFRP正式値、スパー過剰設計)。§5.2「`mainwing_structural_analysis.py` の機能フロー」を追加。§11「計算書 §1〜§9 章立てと進捗」を追加。 |
+| 2026-05-17 | §5 リポジトリ構成を更新(`docs/` 配下の計算書、章別解析スクリプトを反映)。§5.2 を「解析値の整合管理」に刷新(`docs/analysis_results_v3.md` を単一の真実とする運用)。§11 章立て表を更新(§2-§5・§7 文書化完了、§4 胴体を新設)。注意:§2「現状の確定事項」は旧値(V=7・σ28.85・SF52 等)のままで未更新。最新値は各計算書と `analysis_results_v3.md` を参照。 |
